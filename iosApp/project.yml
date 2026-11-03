@@ -1,0 +1,34 @@
+name: Melo
+options:
+  bundleIdPrefix: com.louis
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  Melo:
+    type: application
+    platform: iOS
+    sources:
+      - Melo
+    info:
+      path: Melo/Info.plist
+      properties:
+        CFBundleDisplayName: Melo
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        CADisableMinimumFrameDurationOnPhone: true
+        ITSAppUsesNonExemptEncryption: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.louis.melo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/bin/iosArm64/releaseFramework"
+        OTHER_LDFLAGS: ["-framework", "Shared"]
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""

@@ -3,7 +3,14 @@ name: Build iOS app
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: 1.0.${{ github.run_number }}
 
 jobs:
   ios:
@@ -37,6 +44,7 @@ jobs:
         run: |
           xcodebuild -project iosApp/Melo.xcodeproj -scheme Melo -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
       - name: Package .ipa
@@ -49,3 +57,52 @@ jobs:
         with:
           name: Melo-ipa
           path: Melo.ipa
+
+      # SideStore/AltStore "source": add
+      # https://github.com/<owner>/melo/releases/latest/download/source.json once,
+      # and every new release shows up as an update in SideStore.
+      - name: Write SideStore source
+        if: github.event_name != 'pull_request'
+        env:
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'PY'
+          import json, os, datetime
+          repo, version = os.environ["REPO"], os.environ["VERSION"]
+          message = (os.environ.get("MESSAGE") or "").splitlines()[0] if os.environ.get("MESSAGE") else ""
+          source = {
+              "name": "Melo",
+              "identifier": f"io.github.{os.environ['OWNER'].lower()}.melo.source",
+              "sourceURL": f"https://github.com/{repo}/releases/latest/download/source.json",
+              "apps": [{
+                  "name": "Melo",
+                  "bundleIdentifier": "com.louis.melo",
+                  "developerName": os.environ["OWNER"],
+                  "subtitle": "Lecteur YouTube Music",
+                  "localizedDescription": "Recherche, lecture en arrière-plan, paroles synchronisées, playlists et téléchargements.",
+                  "iconURL": f"https://raw.githubusercontent.com/{repo}/main/iosApp/Melo/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+                  "tintColor": "9FD3FF",
+                  "versions": [{
+                      "version": version,
+                      "buildVersion": os.environ["GITHUB_RUN_NUMBER"],
+                      "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                      "localizedDescription": message,
+                      "downloadURL": f"https://github.com/{repo}/releases/download/v{version}/Melo.ipa",
+                      "size": os.path.getsize("Melo.ipa"),
+                      "minOSVersion": "16.0",
+                  }],
+                  "appPermissions": {"entitlements": [], "privacy": {}},
+              }],
+              "news": [],
+          }
+          json.dump(source, open("source.json", "w"), indent=2, ensure_ascii=False)
+          PY
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ github.event.head_commit.message || 'Build manuel' }}
+        run: gh release create "v$VERSION" Melo.ipa source.json --title "Melo $VERSION" --notes "$NOTES"

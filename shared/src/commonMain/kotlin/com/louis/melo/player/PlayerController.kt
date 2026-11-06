@@ -9,6 +9,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import com.louis.melo.data.Downloads
 import com.louis.melo.data.Library
 import com.louis.melo.data.Messages
+import com.louis.melo.data.PlaybackStore
 import com.louis.melo.data.Repo
 import com.louis.melo.data.Song
 import com.louis.melo.data.createAudioEngine
@@ -45,14 +46,34 @@ class PlayerController(private val engine: AudioEngine = createAudioEngine()) : 
     var repeat by mutableStateOf(Repeat.OFF); private set
     var sleepAt by mutableStateOf<Long?>(null); private set
 
+    /** Song currently loaded in the engine; differs from [current] right after a restore. */
+    private var loadedId: String? = null
+    private var pendingSeek: Long? = null
+
     init {
         engine.listener = this
+        PlaybackStore.load()?.let { saved ->
+            queue = saved.queue
+            index = saved.index
+            position = saved.position
+            duration = saved.queue[saved.index].duration * 1000
+        }
         scope.launch {
+            var tick = 0
             while (true) {
                 isPlaying = engine.isPlaying
                 isBuffering = loadJob?.isActive == true || engine.isBuffering
-                position = engine.positionMs
-                engine.durationMs.takeIf { it > 0 }?.let { duration = it }
+                if (loadedId != null && loadedId == current?.id) {
+                    pendingSeek?.let { target ->
+                        if (engine.durationMs > 0) {
+                            engine.seekTo(target)
+                            pendingSeek = null
+                        }
+                    }
+                    if (pendingSeek == null) position = engine.positionMs
+                    engine.durationMs.takeIf { it > 0 }?.let { duration = it }
+                }
+                if (++tick % 20 == 0 && current != null) PlaybackStore.save(PlaybackStore.State(queue, index, position))
                 delay(250)
             }
         }
@@ -114,8 +135,13 @@ class PlayerController(private val engine: AudioEngine = createAudioEngine()) : 
 
     // ---- transport ----
     fun togglePlay() {
+        val song = current ?: return
         when {
-            current == null -> return
+            loadedId != song.id -> {
+                // Restored from a previous session: load it and jump back to where we were.
+                pendingSeek = position.takeIf { it > 0 }
+                start(song, forceRefresh = false)
+            }
             engine.isPlaying -> engine.pause()
             loadJob?.isActive == true -> Unit
             else -> engine.play()
@@ -143,6 +169,7 @@ class PlayerController(private val engine: AudioEngine = createAudioEngine()) : 
         index = i
         val song = queue[i]
         position = 0
+        pendingSeek = null
         duration = song.duration * 1000
         retried = false
         Library.addHistory(song)
@@ -152,6 +179,7 @@ class PlayerController(private val engine: AudioEngine = createAudioEngine()) : 
 
     private fun start(song: Song, forceRefresh: Boolean) {
         loadJob?.cancel()
+        loadedId = song.id
         isBuffering = true
         loadJob = scope.launch {
             try {

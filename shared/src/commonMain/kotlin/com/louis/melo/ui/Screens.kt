@@ -29,7 +29,11 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Upload
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
@@ -67,7 +71,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.louis.melo.data.Downloads
 import com.louis.melo.data.Library
+import com.louis.melo.data.Messages
 import com.louis.melo.data.Repo
+import com.louis.melo.data.rememberFileExchange
 import com.louis.melo.data.Song
 import com.louis.melo.data.formatDuration
 import com.louis.melo.player.LocalPlayer
@@ -255,15 +261,34 @@ fun LibraryScreen() {
     val history by Library.history.collectAsState()
     val playlists by Library.playlists.collectAsState()
     var creating by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    val files = rememberFileExchange()
 
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = 16.dp)) {
         item {
-            Text(
-                "Bibliothèque",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(16.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Bibliothèque",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp).weight(1f),
+                )
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Options") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        MenuItem("Exporter la bibliothèque", Icons.Rounded.Upload) {
+                            menu = false
+                            files.export("melo-bibliotheque.json", Library.exportJson())
+                        }
+                        MenuItem("Importer (Melo ou Muse)", Icons.Rounded.FileOpen) {
+                            menu = false
+                            files.import { text ->
+                                Messages.show(runCatching { Library.importJson(text) }.getOrElse { "Fichier invalide" })
+                            }
+                        }
+                    }
+                }
+            }
         }
         item { Entry(Icons.Rounded.Favorite, "Favoris", "${favorites.size} titres") { nav.push(Screen.Songs(FAVORITES)) } }
         item { Entry(Icons.Rounded.Download, "Téléchargements", "${downloads.size} titres") { nav.push(Screen.Songs(DOWNLOADS)) } }

@@ -15,6 +15,12 @@ import kotlinx.io.readString
 import kotlinx.io.writeString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlin.random.Random
 
 /** Favorites, history, playlists, downloads and recent searches, saved as JSON on the device. */
@@ -127,6 +133,46 @@ object Library {
     fun removeDownload(id: String) {
         _downloads.update { list -> list.filter { it.id != id } }
         save()
+    }
+
+    // ---- backup ----
+    fun exportJson(): String = Json { prettyPrint = true }.encodeToString(
+        Snapshot.serializer(),
+        Snapshot(_favorites.value, _history.value, _playlists.value, emptyList(), _searches.value),
+    )
+
+    /** Merges a backup from Melo or Muse (which names some fields differently). Returns a summary. */
+    fun importJson(text: String): String {
+        val root = Json.parseToJsonElement(text).jsonObject
+        fun song(e: JsonElement): Song? {
+            val o = e as? JsonObject ?: return null
+            fun s(vararg keys: String) = keys.firstNotNullOfOrNull { (o[it] as? JsonPrimitive)?.contentOrNull }
+            return Song(
+                id = s("id") ?: return null,
+                title = s("title").orEmpty(),
+                artist = s("artist").orEmpty(),
+                thumbnail = s("thumbnail", "thumb"),
+                duration = s("duration", "dur")?.toLongOrNull() ?: 0,
+            )
+        }
+        fun songs(key: String, from: JsonObject = root) = (from[key] as? JsonArray).orEmpty().mapNotNull(::song)
+
+        val favorites = songs("favorites")
+        val history = songs("history")
+        val playlists = (root["playlists"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val name = (o["name"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            name to songs("songs", o)
+        }
+        val searches = (root["searches"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+
+        _favorites.update { (it + favorites).distinctBy(Song::id) }
+        _history.update { (it + history).distinctBy(Song::id).take(300) }
+        _searches.update { (it + searches).distinct().take(20) }
+        val existing = _playlists.value.map { it.name }.toSet()
+        playlists.filter { it.first !in existing }.forEach { (name, list) -> createPlaylist(name, list) }
+        save()
+        return "${favorites.size} favoris, ${playlists.size} playlists importés"
     }
 
     private fun save() {

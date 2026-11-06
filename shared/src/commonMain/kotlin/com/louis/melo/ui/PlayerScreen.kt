@@ -3,6 +3,8 @@ package com.louis.melo.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -98,7 +100,10 @@ fun MiniPlayer(onOpen: () -> Unit) {
     Surface(tonalElevation = 6.dp, modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Column {
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp))
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp).swipeToSkip(player),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Thumb(song.thumbnail, 44.dp)
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -119,6 +124,18 @@ fun MiniPlayer(onOpen: () -> Unit) {
             }
         }
     }
+}
+
+/** Swipe left for the next song, right for the previous one. */
+private fun Modifier.swipeToSkip(player: PlayerController): Modifier = pointerInput(player) {
+    var total = 0f
+    detectHorizontalDragGestures(
+        onDragStart = { total = 0f },
+        onDragEnd = {
+            val threshold = 60.dp.toPx()
+            if (total < -threshold) player.next() else if (total > threshold) player.previous()
+        },
+    ) { _, amount -> total += amount }
 }
 
 @Composable
